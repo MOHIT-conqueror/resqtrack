@@ -743,8 +743,6 @@
 <script>
 const API_URL = 'http://localhost:3000/api';
 const WS_URL = 'ws://localhost:3000';
-const GEMINI_API_KEY = 'AIzaSyA3gYRS8LUUMC2Ce_7DLCbpwQS91imnOlQ';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 let appState = { teams: [] };
 let wsInstance = null;
@@ -753,7 +751,7 @@ const MAX_RETRIES = 10;
 let resupplyTarget = null;
 let currentModalTeamId = null;
 let activeConvTeam = null;
-let messages = {}; // teamId -> [{role, text, time}]
+let messages = {}; 
 let aiHistory = [];
 
 // ── CLOCK ──
@@ -801,11 +799,20 @@ async function api(endpoint, method = 'GET', body = null) {
 
 // ── WEBSOCKET ──
 function connectWS() {
-    if (wsInstance) wsInstance.close();
     wsInstance = new WebSocket(WS_URL);
-    wsInstance.onopen = () => { setConn('online'); retryCount = 0; };
+
+    wsInstance.onopen = () => {
+        setConn('online');
+
+        wsInstance.send(JSON.stringify({
+            type: "REGISTER",
+            teamId: "central"
+        }));
+    };
+
     wsInstance.onmessage = (e) => {
         const msg = JSON.parse(e.data);
+
         if (msg.type === 'INVENTORY_UPDATE') {
             appState.teams = msg.payload;
             renderDashboard();
@@ -813,17 +820,38 @@ function connectWS() {
             renderMsgSidebar();
             updateAiContext();
         }
-    };
-    wsInstance.onerror = () => setConn('error');
-    wsInstance.onclose = () => {
-        if (retryCount < MAX_RETRIES) {
-            const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
-            retryCount++;
-            setConn('connecting', `Retry ${retryCount}/${MAX_RETRIES} in ${delay/1000}s`);
-            setTimeout(connectWS, delay);
-        } else { setConn('offline'); }
+
+        if (msg.type === "CHAT_MESSAGE") {
+            addMessageToUI(msg);
+        }
     };
 }
+function addMessageToUI(msg) {
+    // Determine which team this message belongs to
+    const targetTeamId = msg.senderId === "central" ? msg.receiverId : msg.senderId;
+    
+    // Initialize array if it doesn't exist
+    if (!messages[targetTeamId]) messages[targetTeamId] = [];
+    
+    // Find team name for UI
+    const teamName = appState.teams.find(t => t._id === targetTeamId)?.name || "Team";
+
+    // Add to our state
+    messages[targetTeamId].push({
+        role: msg.senderId === "central" ? "sent" : "received",
+        text: msg.text,
+        time: msg.time,
+        teamName: teamName
+    });
+
+    // If we are currently looking at this team's chat, re-render
+    if (activeConvTeam && activeConvTeam._id === targetTeamId) {
+        renderMessages(targetTeamId);
+    }
+}
+
+
+    
 function setConn(state, label) {
     const dot = document.getElementById('conn-dot');
     const text = document.getElementById('conn-text');
@@ -971,35 +999,21 @@ function renderMessages(teamId) {
     body.scrollTop = body.scrollHeight;
 }
 
-function sendMessage(teamId) {
-    const input = document.getElementById('msg-input');
+function sendMessage() {
+    const input = document.querySelector(".msg-textarea");
     const text = input.value.trim();
-    if (!text) return;
-    if (!messages[teamId]) messages[teamId] = [];
-    messages[teamId].push({ role: 'sent', text, time: timeStr() });
-    input.value = '';
-    renderMessages(teamId);
-    // Simulate team reply after delay
-    setTimeout(() => {
-        const team = appState.teams.find(t => t._id === teamId);
-        if (!team) return;
-        const replies = [
-            'Acknowledged. Message received. Over.',
-            'Copy that, Command. We are on it.',
-            'Roger. Will report back once complete.',
-            'Understood. Executing now.',
-            'Confirmed receipt. Situation is under control.',
-        ];
-        messages[teamId].push({
-            role: 'received',
-            teamName: team.name,
-            text: replies[Math.floor(Math.random() * replies.length)],
-            time: timeStr()
-        });
-        if (activeConvTeam?._id === teamId) renderMessages(teamId);
-    }, 1000 + Math.random() * 1500);
-}
+    if (!text || !activeConvTeam) return;
 
+    wsInstance.send(JSON.stringify({
+        type: "CHAT_MESSAGE",
+        senderId: "central",
+        receiverId: activeConvTeam._id, // Fixed: use activeConvTeam._id instead of selectedTeamId
+        text: text,
+        time: new Date().toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit'})
+    }));
+
+    input.value = "";
+}
 // ── AI CHATBOT ──
 function updateAiContext() {
     const ctx = document.getElementById('ai-context');
@@ -1033,25 +1047,31 @@ async function sendAiMessage(userText) {
 
     try {
         const systemPrompt = `You are ResQ AI, an expert emergency management and disaster relief assistant for ResQTrack — a real-time disaster resource management system. You help commanders make strategic decisions, follow protocols, manage resources, and coordinate rescue operations. Be concise, professional, and actionable. ${teamsContext}`;
-        const response = await fetch(GEMINI_URL, {
+        
+        // Secure backend fetch
+        const response = await fetch(`${API_URL}/ai`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                system_instruction: { parts: [{ text: systemPrompt }] },
-                contents: aiHistory,
-                generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
+                systemPrompt: systemPrompt,
+                history: [...aiHistory] // send copy of history
             })
         });
+        
         const data = await response.json();
-        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response. Please try again.';
+        if (!response.ok) throw new Error(data.error || 'Backend error');
+        
+        const reply = data.reply || 'Sorry, I could not generate a response. Please try again.';
         aiHistory.push({ role: 'model', parts: [{ text: reply }] });
+        
         document.getElementById(typingId)?.remove();
+        
         // Format reply with basic markdown-like handling
         const formatted = reply.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
         messagesEl.innerHTML += `<div class="ai-msg assistant"><div class="ai-msg-avatar">🤖</div><div class="ai-bubble">${formatted}</div></div>`;
     } catch (err) {
         document.getElementById(typingId)?.remove();
-        messagesEl.innerHTML += `<div class="ai-msg assistant"><div class="ai-msg-avatar">🤖</div><div class="ai-bubble" style="color:var(--accent2)">Error: Could not connect to Gemini API. ${err.message}</div></div>`;
+        messagesEl.innerHTML += `<div class="ai-msg assistant"><div class="ai-msg-avatar">🤖</div><div class="ai-bubble" style="color:var(--accent2)">Error: Could not connect to AI. ${err.message}</div></div>`;
     }
     messagesEl.scrollTop = messagesEl.scrollHeight;
     sendBtn.disabled = false;
