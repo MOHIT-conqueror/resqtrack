@@ -412,8 +412,6 @@
 <script>
 const API_URL = 'http://localhost:3000/api';
 const WS_URL = 'ws://localhost:3000';
-const GEMINI_API_KEY = 'AIzaSyA3gYRS8LUUMC2Ce_7DLCbpwQS91imnOlQ';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 let currentTeam = null;
 let allTeams = [];
@@ -441,7 +439,16 @@ document.querySelectorAll('.tab').forEach(tab => {
 function connectWS() {
     if (wsInstance) wsInstance.close();
     wsInstance = new WebSocket(WS_URL);
-    wsInstance.onopen = () => { setConn(true); retryCount = 0; };
+    
+    wsInstance.onopen = () => { 
+        setConn(true); 
+        retryCount = 0; 
+        // Register this client if they are already logged in
+        if (currentTeam) {
+            wsInstance.send(JSON.stringify({ type: "REGISTER", teamId: currentTeam._id }));
+        }
+    };
+    
     wsInstance.onmessage = (e) => {
         const msg = JSON.parse(e.data);
         if (msg.type === 'INVENTORY_UPDATE') {
@@ -452,7 +459,15 @@ function connectWS() {
                 else { handleDeletion(); }
             }
         }
+        
+        // NEW: Handle incoming chat messages
+        if (msg.type === 'CHAT_MESSAGE') {
+            const role = msg.senderId === "central" ? "received" : "sent";
+            convMessages.push({ role: role, text: msg.text, time: msg.time });
+            renderMessages();
+        }
     };
+    
     wsInstance.onerror = () => setConn(false, 'Error');
     wsInstance.onclose = () => {
         if (retryCount < MAX_RETRIES) {
@@ -490,8 +505,17 @@ async function handleLogin() {
             const e = await r.json();
             throw new Error(e.error || 'Invalid access key');
         }
+        
         const data = await r.json();
         currentTeam = data.team;
+        
+        // NEW: Register with the WebSocket server immediately upon login
+        if (wsInstance && wsInstance.readyState === WebSocket.OPEN) {
+            wsInstance.send(JSON.stringify({ type: "REGISTER", teamId: currentTeam._id }));
+        }
+        
+        
+
         showTeamView();
     } catch(e) {
         msgEl.className = 'login-msg error';
@@ -590,21 +614,20 @@ function renderMessages() {
 function sendMessage() {
     const input = document.getElementById('msg-input');
     const text = input.value.trim();
-    if (!text) return;
-    convMessages.push({ role: 'sent', text, time: timeStr() });
+    if (!text || !currentTeam) return;
+    
+    // Send the real message via WebSocket
+    wsInstance.send(JSON.stringify({
+        type: "CHAT_MESSAGE",
+        senderId: currentTeam._id,
+        receiverId: "central",
+        text: text,
+        time: timeStr()
+    }));
+    
     input.value = '';
-    renderMessages();
-    // Simulate reply
-    setTimeout(() => {
-        const replies = [
-            'Message received. Central Command acknowledges.',
-            'Copy that. Standby for further instructions.',
-            'Understood. We are monitoring the situation.',
-            'Confirmed. Support is being coordinated.',
-        ];
-        convMessages.push({ role: 'received', text: replies[Math.floor(Math.random() * replies.length)], time: timeStr() });
-        renderMessages();
-    }, 1200 + Math.random() * 1000);
+    // Note: The message will render on the screen when the server bounces it back
+    // to us via wsInstance.onmessage, ensuring it was successfully received.
 }
 
 document.getElementById('msg-send-btn').addEventListener('click', sendMessage);
@@ -635,17 +658,24 @@ async function sendAiMsg(text) {
 
     aiHistory.push({ role: 'user', parts: [{ text }] });
     try {
-        const r = await fetch(GEMINI_URL, {
-            method: 'POST', headers: {'Content-Type':'application/json'},
+        const systemPrompt = `You are ResQ AI, a field assistant for disaster rescue teams using ResQTrack. Give concise, actionable guidance on emergency protocols, first aid, resource management, and field operations. Be direct and clear — team members need quick answers. ${ctx}`;
+        
+        // Secure backend fetch
+        const response = await fetch(`${API_URL}/ai`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                system_instruction: { parts: [{ text: `You are ResQ AI, a field assistant for disaster rescue teams using ResQTrack. Give concise, actionable guidance on emergency protocols, first aid, resource management, and field operations. Be direct and clear — team members need quick answers. ${ctx}` }] },
-                contents: aiHistory,
-                generationConfig: { temperature: 0.7, maxOutputTokens: 800 }
+                systemPrompt: systemPrompt,
+                history: [...aiHistory] // send copy of history
             })
         });
-        const data = await r.json();
-        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Unable to get response. Please try again.';
+
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Backend error');
+
+        const reply = data.reply || 'Unable to get response. Please try again.';
         aiHistory.push({ role: 'model', parts: [{ text: reply }] });
+        
         document.getElementById(tid)?.remove();
         const formatted = reply.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
         msgs.innerHTML += `<div class="ai-msg assistant"><div class="ai-msg-av">🤖</div><div class="ai-bubble">${formatted}</div></div>`;
