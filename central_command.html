@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResQTrack — Central Command</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0e1a;
+            --surface: #111827;
+            --surface2: #1a2235;
+            --border: #1e2d42;
+            --accent: #00d4ff;
+            --accent2: #ff4d6d;
+            --accent3: #00ff88;
+            --warn: #ffb347;
+            --text: #e2e8f0;
+            --text-muted: #64748b;
+            --text-dim: #94a3b8;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Syne', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        /* Grid bg */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ── LAYOUT ── */
+        .app-shell { display: flex; height: 100vh; position: relative; z-index: 1; }
+
+        /* Sidebar */
+        .sidebar {
+            width: 260px;
+            min-width: 260px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+        .sidebar-logo {
+            padding: 24px 20px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+        .logo-badge {
+            display: flex; align-items: center; gap: 10px;
+        }
+        .logo-icon {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+        }
+        .logo-text { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
+        .logo-sub { font-size: 10px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px; letter-spacing: 1px; }
+
+        .nav-section { padding: 16px 12px 8px; }
+        .nav-label { font-size: 10px; color: var(--text-muted); letter-spacing: 2px; text-transform: uppercase; padding: 0 8px; margin-bottom: 8px; font-family: 'JetBrains Mono', monospace; }
+        .nav-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 12px; border-radius: 8px;
+            cursor: pointer; font-size: 14px; font-weight: 500;
+            color: var(--text-muted);
+            transition: all 0.15s;
+            margin-bottom: 2px;
+        }
+        .nav-item:hover { background: var(--surface2); color: var(--text); }
+        .nav-item.active { background: rgba(0,212,255,0.1); color: var(--accent); }
+        .nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+        .nav-badge {
+            margin-left: auto; background: var(--accent2);
+            color: #fff; font-size: 10px; border-radius: 10px;
+            padding: 2px 7px; font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .conn-status {
+            margin: auto 12px 12px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            font-size: 12px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .conn-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent3);
+            display: inline-block; margin-right: 6px;
+            animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+        .conn-dot.offline { background: var(--accent2); animation: none; }
+        .conn-dot.connecting { background: var(--warn); }
+
+        /* Main area */
+        .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+        .topbar {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+            background: var(--surface);
+        }
+        .topbar-title { font-size: 20px; font-weight: 700; }
+        .topbar-meta { font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+        .topbar-time { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent); }
+
+        .content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+        .content::-webkit-scrollbar { width: 6px; }
+        .content::-webkit-scrollbar-track { background: transparent; }
+        .content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        /* ── PANELS ── */
+        .panel { display: none; }
+        .panel.active { display: block; }
+
+        /* Stats row */
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 2px;
+        }
+        .stat-card.blue::before { background: var(--accent); }
+        .stat-card.red::before { background: var(--accent2); }
+        .stat-card.green::before { background: var(--accent3); }
+        .stat-card.warn::before { background: var(--warn); }
+        .stat-label { font-size: 11px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
+        .stat-value { font-size: 32px; font-weight: 800; margin: 6px 0 4px; }
+        .stat-sub { font-size: 11px; color: var(--text-muted); }
+
+        /* Teams grid */
+        .teams-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+        .team-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .team-card:hover { border-color: var(--accent); }
+        .team-card-header {
+            padding: 16px 18px 14px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: flex-start; justify-content: space-between;
+        }
+        .team-name { font-size: 16px; font-weight: 700; }
+        .team-loc { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+        .team-key {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; color: var(--accent);
+            background: rgba(0,212,255,0.08);
+            padding: 3px 8px; border-radius: 6px;
+            margin-top: 4px; display: inline-block;
+        }
+        .btn-del-team {
+            background: transparent; border: 1px solid var(--accent2);
+            color: var(--accent2); font-size: 11px; font-weight: 600;
+            padding: 5px 10px; border-radius: 6px; cursor: pointer;
+            transition: all 0.15s; font-family: 'Syne', sans-serif;
+        }
+        .btn-del-team:hover { background: var(--accent2); color: #fff; }
+
+        .inv-list { padding: 14px 18px; }
+        .inv-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .inv-item:last-child { border-bottom: none; }
+        .inv-name { font-size: 13px; font-weight: 500; }
+        .inv-qty {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px; font-weight: 700;
+        }
+        .inv-qty.red { color: var(--accent2); }
+        .inv-qty.yellow { color: var(--warn); }
+        .inv-qty.green { color: var(--accent3); }
+        .inv-dot { width: 8px; height: 8px; border-radius: 50%; margin-left: 8px; }
+        .inv-dot.red { background: var(--accent2); }
+        .inv-dot.yellow { background: var(--warn); }
+        .inv-dot.green { background: var(--accent3); }
+        .del-inv-btn {
+            background: none; border: none; color: var(--text-muted);
+            cursor: pointer; padding: 2px; opacity: 0; transition: opacity 0.15s;
+            font-size: 14px;
+        }
+        .inv-item:hover .del-inv-btn { opacity: 1; }
+
+        .team-card-footer { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
+        .btn-add-inv {
+            flex: 1; background: rgba(0,212,255,0.08); border: 1px solid rgba(0,212,255,0.2);
+            color: var(--accent); font-size: 12px; font-weight: 600;
+            padding: 8px; border-radius: 8px; cursor: pointer;
+            font-family: 'Syne', sans-serif; transition: all 0.15s;
+        }
+        .btn-add-inv:hover { background: rgba(0,212,255,0.15); }
+        .btn-msg-team {
+            background: rgba(0,255,136,0.08); border: 1px solid rgba(0,255,136,0.2);
+            color: var(--accent3); font-size: 12px; font-weight: 600;
+            padding: 8px 12px; border-radius: 8px; cursor: pointer;
+            font-family: 'Syne', sans-serif; transition: all 0.15s;
+        }
+        .btn-msg-team:hover { background: rgba(0,255,136,0.15); }
+
+        /* ── DEPLOY PANEL ── */
+        .deploy-form {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 480px;
+        }
+        .form-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+        .form-group { margin-bottom: 16px; }
+        .form-label { font-size: 11px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; display: block; margin-bottom: 6px; }
+        .form-input {
+            width: 100%; background: var(--surface2);
+            border: 1px solid var(--border); border-radius: 8px;
+            color: var(--text); font-family: 'Syne', sans-serif;
+            font-size: 14px; padding: 10px 14px; outline: none;
+            transition: border-color 0.15s;
+        }
+        .form-input:focus { border-color: var(--accent); }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #0088aa);
+            color: #000; font-weight: 700; font-size: 14px;
+            padding: 12px 24px; border: none; border-radius: 8px;
+            cursor: pointer; font-family: 'Syne', sans-serif;
+            transition: opacity 0.15s; width: 100%;
+        }
+        .btn-primary:hover { opacity: 0.9; }
+        .msg-box {
+            margin-top: 14px; padding: 10px 14px;
+            border-radius: 8px; font-size: 13px; display: none;
+        }
+        .msg-box.success { background: rgba(0,255,136,0.1); color: var(--accent3); border: 1px solid rgba(0,255,136,0.2); display: block; }
+        .msg-box.error { background: rgba(255,77,109,0.1); color: var(--accent2); border: 1px solid rgba(255,77,109,0.2); display: block; }
+        .msg-box.info { background: rgba(0,212,255,0.1); color: var(--accent); border: 1px solid rgba(0,212,255,0.2); display: block; }
+
+        /* ── ALERTS ── */
+        .alerts-list { display: flex; flex-direction: column; gap: 12px; }
+        .alert-item {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent2);
+            border-radius: 12px;
+            padding: 16px 18px;
+            display: flex; align-items: flex-start; justify-content: space-between;
+        }
+        .alert-item.warn { border-left-color: var(--warn); }
+        .alert-name { font-size: 14px; font-weight: 700; }
+        .alert-desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+        .btn-resupply {
+            background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.2);
+            color: var(--accent); font-size: 12px; font-weight: 600;
+            padding: 6px 14px; border-radius: 6px; cursor: pointer;
+            font-family: 'Syne', sans-serif; white-space: nowrap; margin-left: 12px;
+            transition: all 0.15s;
+        }
+        .btn-resupply:hover { background: rgba(0,212,255,0.2); }
+
+        /* ── MESSAGES ── */
+        .msg-layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; height: calc(100vh - 140px); }
+        .msg-sidebar {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;
+        }
+        .msg-sidebar-hdr {
+            padding: 16px; border-bottom: 1px solid var(--border);
+            font-size: 13px; font-weight: 700; color: var(--text-muted);
+            letter-spacing: 1px; text-transform: uppercase;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .msg-team-list { overflow-y: auto; flex: 1; }
+        .msg-team-item {
+            padding: 14px 16px; cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .msg-team-item:hover { background: var(--surface2); }
+        .msg-team-item.active { background: rgba(0,212,255,0.08); }
+        .msg-team-avatar {
+            width: 34px; height: 34px; border-radius: 8px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 800; flex-shrink: 0;
+            color: #000;
+        }
+        .msg-team-name { font-size: 13px; font-weight: 600; }
+        .msg-team-loc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .unread-badge {
+            margin-left: auto; background: var(--accent2);
+            color: #fff; font-size: 10px; border-radius: 10px;
+            padding: 2px 6px; font-weight: 700;
+        }
+
+        .msg-main {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+        .msg-header {
+            padding: 16px 20px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; gap: 12px;
+        }
+        .msg-header-name { font-size: 16px; font-weight: 700; }
+        .msg-header-loc { font-size: 12px; color: var(--text-muted); }
+        .online-pill {
+            margin-left: auto; background: rgba(0,255,136,0.1);
+            border: 1px solid rgba(0,255,136,0.3); color: var(--accent3);
+            font-size: 11px; padding: 4px 10px; border-radius: 20px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .msg-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+        .msg-body::-webkit-scrollbar { width: 4px; }
+        .msg-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .chat-msg { max-width: 75%; display: flex; flex-direction: column; }
+        .chat-msg.sent { align-self: flex-end; align-items: flex-end; }
+        .chat-msg.received { align-self: flex-start; align-items: flex-start; }
+        .chat-bubble {
+            padding: 10px 14px; border-radius: 12px;
+            font-size: 13px; line-height: 1.5;
+        }
+        .chat-msg.sent .chat-bubble {
+            background: rgba(0,212,255,0.15); border: 1px solid rgba(0,212,255,0.2);
+            color: var(--text);
+        }
+        .chat-msg.received .chat-bubble {
+            background: var(--surface2); border: 1px solid var(--border);
+            color: var(--text);
+        }
+        .chat-meta { font-size: 10px; color: var(--text-muted); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+
+        .msg-input-area {
+            padding: 16px 20px; border-top: 1px solid var(--border);
+            display: flex; gap: 10px; align-items: flex-end;
+        }
+        .msg-textarea {
+            flex: 1; background: var(--surface2); border: 1px solid var(--border);
+            border-radius: 10px; color: var(--text);
+            font-family: 'Syne', sans-serif; font-size: 13px;
+            padding: 10px 14px; outline: none; resize: none;
+            min-height: 44px; max-height: 120px; transition: border-color 0.15s;
+        }
+        .msg-textarea:focus { border-color: var(--accent); }
+        .btn-send {
+            background: var(--accent); color: #000; font-weight: 700;
+            border: none; border-radius: 10px; padding: 10px 18px;
+            cursor: pointer; font-family: 'Syne', sans-serif; font-size: 13px;
+            transition: opacity 0.15s; height: 44px;
+        }
+        .btn-send:hover { opacity: 0.85; }
+
+        .no-conv {
+            flex: 1; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            color: var(--text-muted); font-size: 14px;
+        }
+        .no-conv-icon { font-size: 40px; margin-bottom: 12px; }
+
+        /* ── AI CHATBOT ── */
+        .ai-layout { display: grid; grid-template-columns: 1fr 300px; gap: 16px; height: calc(100vh - 140px); }
+        .ai-chat {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; display: flex; flex-direction: column; overflow: hidden;
+        }
+        .ai-header {
+            padding: 16px 20px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; gap: 12px;
+        }
+        .ai-avatar {
+            width: 38px; height: 38px; border-radius: 10px;
+            background: linear-gradient(135deg, #7c3aed, var(--accent));
+            display: flex; align-items: center; justify-content: center; font-size: 18px;
+        }
+        .ai-name { font-size: 15px; font-weight: 700; }
+        .ai-desc { font-size: 11px; color: var(--text-muted); }
+        .powered-badge {
+            margin-left: auto; font-size: 10px; color: #7c3aed;
+            background: rgba(124,58,237,0.1); border: 1px solid rgba(124,58,237,0.3);
+            padding: 4px 10px; border-radius: 20px; font-family: 'JetBrains Mono', monospace;
+        }
+
+        .ai-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+        .ai-messages::-webkit-scrollbar { width: 4px; }
+        .ai-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .ai-msg { display: flex; gap: 10px; max-width: 85%; }
+        .ai-msg.user { align-self: flex-end; flex-direction: row-reverse; }
+        .ai-msg.assistant { align-self: flex-start; }
+        .ai-msg-avatar {
+            width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center; font-size: 14px;
+        }
+        .ai-msg.assistant .ai-msg-avatar { background: linear-gradient(135deg, #7c3aed, var(--accent)); }
+        .ai-msg.user .ai-msg-avatar { background: var(--surface2); border: 1px solid var(--border); }
+        .ai-bubble {
+            padding: 10px 14px; border-radius: 12px;
+            font-size: 13px; line-height: 1.6;
+        }
+        .ai-msg.user .ai-bubble {
+            background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.2);
+        }
+        .ai-msg.assistant .ai-bubble {
+            background: var(--surface2); border: 1px solid var(--border);
+        }
+        .typing-indicator { display: flex; gap: 4px; padding: 4px 0; }
+        .typing-dot {
+            width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted);
+            animation: typing 1.2s infinite;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+        .ai-input-area {
+            padding: 16px 20px; border-top: 1px solid var(--border);
+            display: flex; gap: 10px; align-items: flex-end;
+        }
+        .ai-textarea {
+            flex: 1; background: var(--surface2); border: 1px solid var(--border);
+            border-radius: 10px; color: var(--text);
+            font-family: 'Syne', sans-serif; font-size: 13px;
+            padding: 10px 14px; outline: none; resize: none;
+            min-height: 44px; max-height: 120px; transition: border-color 0.15s;
+        }
+        .ai-textarea:focus { border-color: #7c3aed; }
+        .btn-ai-send {
+            background: linear-gradient(135deg, #7c3aed, var(--accent));
+            color: #fff; font-weight: 700; border: none; border-radius: 10px;
+            padding: 10px 18px; cursor: pointer; font-family: 'Syne', sans-serif;
+            font-size: 13px; height: 44px; transition: opacity 0.15s;
+        }
+        .btn-ai-send:hover { opacity: 0.85; }
+        .btn-ai-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .ai-sidebar {
+            display: flex; flex-direction: column; gap: 12px; overflow-y: auto;
+        }
+        .ai-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 16px;
+        }
+        .ai-card-title {
+            font-size: 11px; color: var(--text-muted); letter-spacing: 1px;
+            text-transform: uppercase; font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 12px;
+        }
+        .quick-prompt {
+            background: var(--surface2); border: 1px solid var(--border);
+            border-radius: 8px; padding: 10px 12px; font-size: 12px;
+            color: var(--text-dim); cursor: pointer; margin-bottom: 8px;
+            transition: all 0.15s;
+        }
+        .quick-prompt:hover { border-color: #7c3aed; color: var(--text); }
+        .quick-prompt:last-child { margin-bottom: 0; }
+
+        /* ── MODAL ── */
+        .modal-backdrop {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 100; display: none;
+        }
+        .modal-backdrop.open { display: flex; }
+        .modal-box {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 16px; padding: 28px; width: 440px;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+        }
+        .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+        .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+        .btn-ghost {
+            flex: 1; background: var(--surface2); border: 1px solid var(--border);
+            color: var(--text); font-weight: 600; font-size: 14px;
+            padding: 10px; border-radius: 8px; cursor: pointer;
+            font-family: 'Syne', sans-serif;
+        }
+
+        /* ── RESUPPLY MODAL ── */
+        #resupply-modal.open { display: flex; }
+
+        /* Misc */
+        .empty-state {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; padding: 60px 20px;
+            color: var(--text-muted); font-size: 14px; text-align: center;
+        }
+        .empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .section-title { font-size: 16px; font-weight: 700; }
+
+        /* Alert pulse */
+        @keyframes alert-pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+        .alert-critical { animation: alert-pulse 1.5s infinite; }
+    </style>
+</head>
+<body>
+<div class="app-shell">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <div class="logo-badge">
+                <div class="logo-icon">🚨</div>
+                <div>
+                    <div class="logo-text">ResQTrack</div>
+                    <div class="logo-sub">CENTRAL COMMAND</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-label">Operations</div>
+            <div class="nav-item active" data-panel="dashboard">
+                <span class="icon">📡</span> Live Dashboard
+            </div>
+            <div class="nav-item" data-panel="alerts">
+                <span class="icon">⚠️</span> Alerts
+                <span class="nav-badge" id="alert-count">0</span>
+            </div>
+            <div class="nav-item" data-panel="deploy">
+                <span class="icon">🚀</span> Deploy Team
+            </div>
+        </div>
+        <div class="nav-section">
+            <div class="nav-label">Communication</div>
+            <div class="nav-item" data-panel="messages">
+                <span class="icon">💬</span> Team Messages
+                <span class="nav-badge" id="msg-unread-count" style="display:none">!</span>
+            </div>
+            <div class="nav-item" data-panel="ai">
+                <span class="icon">🤖</span> AI Assistant
+            </div>
+        </div>
+
+        <div class="conn-status">
+            <span class="conn-dot connecting" id="conn-dot"></span>
+            <span id="conn-text" style="font-size:11px;">Connecting...</span>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+        <div class="topbar">
+            <div>
+                <div class="topbar-title" id="panel-title">Live Dashboard</div>
+                <div class="topbar-meta">Real-time disaster resource management</div>
+            </div>
+            <div class="topbar-time" id="live-clock"></div>
+        </div>
+
+        <div class="content">
+            <!-- DASHBOARD PANEL -->
+            <div class="panel active" id="panel-dashboard">
+                <div class="stats-row">
+                    <div class="stat-card blue">
+                        <div class="stat-label">Active Teams</div>
+                        <div class="stat-value" id="stat-teams">0</div>
+                        <div class="stat-sub">Deployed units</div>
+                    </div>
+                    <div class="stat-card red">
+                        <div class="stat-label">Critical Alerts</div>
+                        <div class="stat-value" id="stat-alerts">0</div>
+                        <div class="stat-sub">Require immediate action</div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="stat-label">Total Items</div>
+                        <div class="stat-value" id="stat-items">0</div>
+                        <div class="stat-sub">Tracked inventory units</div>
+                    </div>
+                    <div class="stat-card warn">
+                        <div class="stat-label">Low Stock</div>
+                        <div class="stat-value" id="stat-low">0</div>
+                        <div class="stat-sub">Items below threshold</div>
+                    </div>
+                </div>
+                <div class="section-header">
+                    <div class="section-title">Deployed Teams</div>
+                </div>
+                <div class="teams-grid" id="teams-grid">
+                    <div class="empty-state"><div class="empty-icon">📡</div><div>Loading teams data...</div></div>
+                </div>
+            </div>
+
+            <!-- ALERTS PANEL -->
+            <div class="panel" id="panel-alerts">
+                <div class="section-header">
+                    <div class="section-title">⚠️ Active Alerts</div>
+                </div>
+                <div class="alerts-list" id="alerts-list">
+                    <div class="empty-state"><div class="empty-icon">✅</div><div>No active alerts. All teams are well-stocked.</div></div>
+                </div>
+            </div>
+
+            <!-- DEPLOY PANEL -->
+            <div class="panel" id="panel-deploy">
+                <div class="deploy-form">
+                    <div class="form-title">🚀 Deploy New Team</div>
+                    <div class="form-group">
+                        <label class="form-label">Team Name</label>
+                        <input type="text" id="new-team-name" class="form-input" placeholder="e.g., Alpha Strike Force">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Location / Mission</label>
+                        <input type="text" id="new-team-loc" class="form-input" placeholder="e.g., Sector 7 - Flood Zone">
+                    </div>
+                    <button class="btn-primary" id="deploy-btn">Create Team & Generate Access Key</button>
+                    <div class="msg-box" id="deploy-msg"></div>
+                </div>
+            </div>
+
+            <!-- MESSAGES PANEL -->
+            <div class="panel" id="panel-messages">
+                <div class="msg-layout">
+                    <div class="msg-sidebar">
+                        <div class="msg-sidebar-hdr">Teams</div>
+                        <div class="msg-team-list" id="msg-team-list">
+                            <div style="padding:20px;color:var(--text-muted);font-size:13px;">No teams deployed yet.</div>
+                        </div>
+                    </div>
+                    <div class="msg-main" id="msg-main">
+                        <div class="no-conv">
+                            <div class="no-conv-icon">💬</div>
+                            <div>Select a team to start messaging</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI PANEL -->
+            <div class="panel" id="panel-ai">
+                <div class="ai-layout">
+                    <div class="ai-chat">
+                        <div class="ai-header">
+                            <div class="ai-avatar">🤖</div>
+                            <div>
+                                <div class="ai-name">ResQ AI Assistant</div>
+                                <div class="ai-desc">Emergency management intelligence</div>
+                            </div>
+                            <div class="powered-badge">Gemini 2.0</div>
+                        </div>
+                        <div class="ai-messages" id="ai-messages">
+                            <div class="ai-msg assistant">
+                                <div class="ai-msg-avatar">🤖</div>
+                                <div class="ai-bubble">
+                                    Hello, Commander! I'm your AI assistant powered by Gemini. I'm here to help with disaster management, resource allocation strategy, emergency protocols, and more.<br><br>
+                                    What do you need help with today?
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ai-input-area">
+                            <textarea class="ai-textarea" id="ai-input" placeholder="Ask about emergency protocols, resource planning, or team strategy..." rows="1"></textarea>
+                            <button class="btn-ai-send" id="ai-send-btn">Send</button>
+                        </div>
+                    </div>
+                    <div class="ai-sidebar">
+                        <div class="ai-card">
+                            <div class="ai-card-title">Quick Prompts</div>
+                            <div class="quick-prompt" data-prompt="What are the standard protocols for deploying a rescue team in a flood situation?">🌊 Flood rescue protocols</div>
+                            <div class="quick-prompt" data-prompt="How should we prioritize resource allocation when multiple teams report critical shortages?">📦 Resource prioritization</div>
+                            <div class="quick-prompt" data-prompt="What's the optimal team size and composition for earthquake rescue operations?">🏚️ Earthquake team setup</div>
+                            <div class="quick-prompt" data-prompt="How do we establish communication if radio goes down during a disaster?">📻 Communication backup plans</div>
+                            <div class="quick-prompt" data-prompt="What medical supplies should every rescue team carry as minimum inventory?">🏥 Essential medical supplies</div>
+                        </div>
+                        <div class="ai-card">
+                            <div class="ai-card-title">Live Context</div>
+                            <div style="font-size:12px;color:var(--text-muted);line-height:1.6;" id="ai-context">
+                                Loading team data for context...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ADD INVENTORY MODAL -->
+<div class="modal-backdrop" id="inv-modal">
+    <div class="modal-box">
+        <div class="modal-title">Add Item to <span id="inv-modal-team" style="color:var(--accent)"></span></div>
+        <div class="form-group">
+            <label class="form-label">Item Name</label>
+            <input type="text" id="inv-name" class="form-input" placeholder="e.g., Water Bottles">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Initial Quantity</label>
+            <input type="number" id="inv-qty" class="form-input" placeholder="e.g., 200">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Low Stock Threshold</label>
+            <input type="number" id="inv-threshold" class="form-input" placeholder="e.g., 40">
+        </div>
+        <div class="msg-box" id="inv-modal-msg"></div>
+        <div class="modal-actions">
+            <button class="btn-ghost" id="inv-modal-cancel">Cancel</button>
+            <button class="btn-primary" style="flex:1" id="inv-modal-save">Save Item</button>
+        </div>
+    </div>
+</div>
+
+<!-- RESUPPLY MODAL -->
+<div class="modal-backdrop" id="resupply-modal">
+    <div class="modal-box">
+        <div class="modal-title">📦 Dispatch Resupply</div>
+        <div style="color:var(--text-muted);font-size:13px;margin-bottom:16px;" id="resupply-info-text"></div>
+        <div class="form-group">
+            <label class="form-label">Quantity to Add</label>
+            <input type="number" id="resupply-qty" class="form-input" placeholder="Enter quantity">
+        </div>
+        <div class="modal-actions">
+            <button class="btn-ghost" id="resupply-cancel">Cancel</button>
+            <button class="btn-primary" style="flex:1" id="resupply-confirm">Dispatch</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const API_URL = 'http://localhost:3000/api';
+const WS_URL = 'ws://localhost:3000';
+const GEMINI_API_KEY = 'AIzaSyA3gYRS8LUUMC2Ce_7DLCbpwQS91imnOlQ';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+let appState = { teams: [] };
+let wsInstance = null;
+let retryCount = 0;
+const MAX_RETRIES = 10;
+let resupplyTarget = null;
+let currentModalTeamId = null;
+let activeConvTeam = null;
+let messages = {}; // teamId -> [{role, text, time}]
+let aiHistory = [];
+
+// ── CLOCK ──
+function updateClock() {
+    document.getElementById('live-clock').textContent = new Date().toLocaleTimeString('en-US', {hour12: false});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── NAV ──
+document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        item.classList.add('active');
+        const panel = item.dataset.panel;
+        document.getElementById(`panel-${panel}`).classList.add('active');
+        const titles = {dashboard:'Live Dashboard',alerts:'Active Alerts',deploy:'Deploy New Team',messages:'Team Messages',ai:'AI Assistant'};
+        document.getElementById('panel-title').textContent = titles[panel] || '';
+        if (panel === 'messages') renderMsgSidebar();
+        if (panel === 'ai') updateAiContext();
+    });
+});
+
+// ── UTILS ──
+const getColor = (q, t) => q <= t ? 'red' : q <= t * 1.5 ? 'yellow' : 'green';
+const timeStr = () => new Date().toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit'});
+function showMsg(el, text, type) {
+    el.textContent = text;
+    el.className = `msg-box ${type}`;
+}
+
+// ── API ──
+async function api(endpoint, method = 'GET', body = null) {
+    const opts = { method, headers: {'Content-Type': 'application/json'} };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(`${API_URL}${endpoint}`, opts);
+    if (!r.ok) {
+        let e; try { e = await r.json(); } catch { e = {error: r.statusText}; }
+        throw new Error(e.error || `Error ${r.status}`);
+    }
+    if (r.status === 204) return {};
+    return r.json();
+}
+
+// ── WEBSOCKET ──
+function connectWS() {
+    if (wsInstance) wsInstance.close();
+    wsInstance = new WebSocket(WS_URL);
+    wsInstance.onopen = () => { setConn('online'); retryCount = 0; };
+    wsInstance.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'INVENTORY_UPDATE') {
+            appState.teams = msg.payload;
+            renderDashboard();
+            renderAlerts();
+            renderMsgSidebar();
+            updateAiContext();
+        }
+    };
+    wsInstance.onerror = () => setConn('error');
+    wsInstance.onclose = () => {
+        if (retryCount < MAX_RETRIES) {
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+            retryCount++;
+            setConn('connecting', `Retry ${retryCount}/${MAX_RETRIES} in ${delay/1000}s`);
+            setTimeout(connectWS, delay);
+        } else { setConn('offline'); }
+    };
+}
+function setConn(state, label) {
+    const dot = document.getElementById('conn-dot');
+    const text = document.getElementById('conn-text');
+    dot.className = 'conn-dot';
+    if (state === 'online') { dot.style.background = 'var(--accent3)'; text.textContent = 'Live'; }
+    else if (state === 'offline') { dot.classList.add('offline'); text.textContent = 'Disconnected'; }
+    else if (state === 'error') { dot.classList.add('offline'); text.textContent = 'Error'; }
+    else { dot.classList.add('connecting'); text.textContent = label || 'Connecting...'; }
+}
+
+// ── RENDER DASHBOARD ──
+function renderDashboard() {
+    const teams = appState.teams;
+    let alerts = 0, totalItems = 0, lowStock = 0;
+    teams.forEach(t => t.inventory.forEach(i => {
+        totalItems += i.quantity;
+        if (i.quantity <= i.threshold) alerts++;
+        if (i.quantity <= i.threshold * 1.5) lowStock++;
+    }));
+    document.getElementById('stat-teams').textContent = teams.length;
+    document.getElementById('stat-alerts').textContent = alerts;
+    document.getElementById('stat-items').textContent = totalItems;
+    document.getElementById('stat-low').textContent = lowStock;
+    document.getElementById('alert-count').textContent = alerts;
+
+    const grid = document.getElementById('teams-grid');
+    if (!teams.length) {
+        grid.innerHTML = '<div class="empty-state"><div class="empty-icon">🚀</div><div>No teams deployed. Go to Deploy Team to add one.</div></div>';
+        return;
+    }
+    grid.innerHTML = teams.map(team => {
+        const invHTML = team.inventory.length ? team.inventory.map(inv => {
+            const c = getColor(inv.quantity, inv.threshold);
+            return `<div class="inv-item">
+                <span class="inv-name">${inv.name}</span>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <span class="inv-qty ${c}">${inv.quantity}</span>
+                    <div class="inv-dot ${c}"></div>
+                    <button class="del-inv-btn" data-team="${team._id}" data-item="${inv.itemId}" data-name="${inv.name}" title="Remove item">✕</button>
+                </div>
+            </div>`;
+        }).join('') : '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">No inventory items yet.</div>';
+
+        return `<div class="team-card">
+            <div class="team-card-header">
+                <div>
+                    <div class="team-name">${team.name}</div>
+                    <div class="team-loc">📍 ${team.location}</div>
+                    <div class="team-key">KEY: ${team.accessKey}</div>
+                </div>
+                <button class="btn-del-team" data-team="${team._id}" data-name="${team.name}">Delete</button>
+            </div>
+            <div class="inv-list">${invHTML}</div>
+            <div class="team-card-footer">
+                <button class="btn-add-inv" data-team="${team._id}" data-name="${team.name}">+ Add Item</button>
+                <button class="btn-msg-team" data-team="${team._id}">💬 Message</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ── RENDER ALERTS ──
+function renderAlerts() {
+    const list = document.getElementById('alerts-list');
+    const items = [];
+    appState.teams.forEach(t => {
+        t.inventory.forEach(i => {
+            if (i.quantity <= i.threshold * 1.5) {
+                const c = getColor(i.quantity, i.threshold);
+                items.push({team: t, inv: i, critical: c === 'red'});
+            }
+        });
+    });
+    if (!items.length) {
+        list.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div>No active alerts. All teams are well-stocked.</div></div>';
+        return;
+    }
+    list.innerHTML = items.map(({team, inv, critical}) => `
+        <div class="alert-item ${critical ? 'alert-critical' : 'warn'}">
+            <div>
+                <div class="alert-name">${critical ? '🔴' : '🟡'} ${team.name} — ${inv.name}</div>
+                <div class="alert-desc">Current stock: <strong>${inv.quantity}</strong> | Threshold: ${inv.threshold} | Location: ${team.location}</div>
+            </div>
+            <button class="btn-resupply" data-team="${team._id}" data-item="${inv.itemId}" data-name="${inv.name}" data-tname="${team.name}">Resupply</button>
+        </div>`).join('');
+}
+
+// ── MESSAGES ──
+function renderMsgSidebar() {
+    const list = document.getElementById('msg-team-list');
+    if (!appState.teams.length) {
+        list.innerHTML = '<div style="padding:20px;color:var(--text-muted);font-size:13px;">No teams deployed yet.</div>';
+        return;
+    }
+    list.innerHTML = appState.teams.map(t => `
+        <div class="msg-team-item ${activeConvTeam?._id === t._id ? 'active' : ''}" data-team-id="${t._id}">
+            <div class="msg-team-avatar">${t.name[0]}</div>
+            <div>
+                <div class="msg-team-name">${t.name}</div>
+                <div class="msg-team-loc">${t.location}</div>
+            </div>
+        </div>`).join('');
+}
+
+function openConversation(teamId) {
+    activeConvTeam = appState.teams.find(t => t._id === teamId);
+    if (!activeConvTeam) return;
+    if (!messages[teamId]) messages[teamId] = [];
+    renderMsgSidebar();
+    const main = document.getElementById('msg-main');
+    main.innerHTML = `
+        <div class="msg-header">
+            <div class="msg-team-avatar" style="width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#000">${activeConvTeam.name[0]}</div>
+            <div>
+                <div class="msg-header-name">${activeConvTeam.name}</div>
+                <div class="msg-header-loc">📍 ${activeConvTeam.location}</div>
+            </div>
+            <div class="online-pill">● ACTIVE</div>
+        </div>
+        <div class="msg-body" id="msg-body"></div>
+        <div class="msg-input-area">
+            <textarea class="msg-textarea" id="msg-input" placeholder="Send a message to ${activeConvTeam.name}..." rows="1"></textarea>
+            <button class="btn-send" id="msg-send-btn">Send</button>
+        </div>`;
+    renderMessages(teamId);
+    document.getElementById('msg-send-btn').addEventListener('click', () => sendMessage(teamId));
+    document.getElementById('msg-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(teamId); }
+    });
+}
+
+function renderMessages(teamId) {
+    const body = document.getElementById('msg-body');
+    if (!body) return;
+    const msgs = messages[teamId] || [];
+    if (!msgs.length) {
+        body.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:13px;padding:30px">No messages yet. Start the conversation.</div>';
+        return;
+    }
+    body.innerHTML = msgs.map(m => `
+        <div class="chat-msg ${m.role}">
+            <div class="chat-bubble">${m.text}</div>
+            <div class="chat-meta">${m.role === 'sent' ? 'Central Command' : m.teamName} · ${m.time}</div>
+        </div>`).join('');
+    body.scrollTop = body.scrollHeight;
+}
+
+function sendMessage(teamId) {
+    const input = document.getElementById('msg-input');
+    const text = input.value.trim();
+    if (!text) return;
+    if (!messages[teamId]) messages[teamId] = [];
+    messages[teamId].push({ role: 'sent', text, time: timeStr() });
+    input.value = '';
+    renderMessages(teamId);
+    // Simulate team reply after delay
+    setTimeout(() => {
+        const team = appState.teams.find(t => t._id === teamId);
+        if (!team) return;
+        const replies = [
+            'Acknowledged. Message received. Over.',
+            'Copy that, Command. We are on it.',
+            'Roger. Will report back once complete.',
+            'Understood. Executing now.',
+            'Confirmed receipt. Situation is under control.',
+        ];
+        messages[teamId].push({
+            role: 'received',
+            teamName: team.name,
+            text: replies[Math.floor(Math.random() * replies.length)],
+            time: timeStr()
+        });
+        if (activeConvTeam?._id === teamId) renderMessages(teamId);
+    }, 1000 + Math.random() * 1500);
+}
+
+// ── AI CHATBOT ──
+function updateAiContext() {
+    const ctx = document.getElementById('ai-context');
+    if (!ctx) return;
+    const teams = appState.teams;
+    if (!teams.length) { ctx.textContent = 'No teams deployed yet.'; return; }
+    let alerts = 0;
+    teams.forEach(t => t.inventory.forEach(i => { if (i.quantity <= i.threshold) alerts++; }));
+    ctx.innerHTML = `<strong style="color:var(--text)">${teams.length}</strong> teams active<br><strong style="color:var(--accent2)">${alerts}</strong> critical alerts<br><br>${teams.map(t => `<span style="color:var(--accent)">${t.name}</span> @ ${t.location}`).join('<br>')}`;
+}
+
+async function sendAiMessage(userText) {
+    const messagesEl = document.getElementById('ai-messages');
+    const sendBtn = document.getElementById('ai-send-btn');
+    sendBtn.disabled = true;
+
+    // Add user message
+    messagesEl.innerHTML += `<div class="ai-msg user"><div class="ai-msg-avatar">👤</div><div class="ai-bubble">${userText}</div></div>`;
+
+    // Typing indicator
+    const typingId = 'typing-' + Date.now();
+    messagesEl.innerHTML += `<div class="ai-msg assistant" id="${typingId}"><div class="ai-msg-avatar">🤖</div><div class="ai-bubble"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div></div>`;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    // Build context
+    const teamsContext = appState.teams.length
+        ? `Current system context: ${appState.teams.length} teams deployed. ${appState.teams.map(t => `Team "${t.name}" at ${t.location} with inventory: ${t.inventory.map(i => `${i.name}: ${i.quantity} (threshold: ${i.threshold})`).join(', ')}`).join('. ')}.`
+        : '';
+
+    aiHistory.push({ role: 'user', parts: [{ text: userText }] });
+
+    try {
+        const systemPrompt = `You are ResQ AI, an expert emergency management and disaster relief assistant for ResQTrack — a real-time disaster resource management system. You help commanders make strategic decisions, follow protocols, manage resources, and coordinate rescue operations. Be concise, professional, and actionable. ${teamsContext}`;
+        const response = await fetch(GEMINI_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                system_instruction: { parts: [{ text: systemPrompt }] },
+                contents: aiHistory,
+                generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
+            })
+        });
+        const data = await response.json();
+        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response. Please try again.';
+        aiHistory.push({ role: 'model', parts: [{ text: reply }] });
+        document.getElementById(typingId)?.remove();
+        // Format reply with basic markdown-like handling
+        const formatted = reply.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+        messagesEl.innerHTML += `<div class="ai-msg assistant"><div class="ai-msg-avatar">🤖</div><div class="ai-bubble">${formatted}</div></div>`;
+    } catch (err) {
+        document.getElementById(typingId)?.remove();
+        messagesEl.innerHTML += `<div class="ai-msg assistant"><div class="ai-msg-avatar">🤖</div><div class="ai-bubble" style="color:var(--accent2)">Error: Could not connect to Gemini API. ${err.message}</div></div>`;
+    }
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    sendBtn.disabled = false;
+}
+
+document.getElementById('ai-send-btn').addEventListener('click', () => {
+    const input = document.getElementById('ai-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    sendAiMessage(text);
+});
+document.getElementById('ai-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('ai-send-btn').click(); }
+});
+document.querySelectorAll('.quick-prompt').forEach(btn => {
+    btn.addEventListener('click', () => {
+        // Switch to AI panel
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        document.querySelector('[data-panel="ai"]').classList.add('active');
+        document.getElementById('panel-title').textContent = 'AI Assistant';
+        document.getElementById('panel-ai').classList.add('active');
+        sendAiMessage(btn.dataset.prompt);
+    });
+});
+
+// ── INVENTORY MODAL ──
+const invModal = document.getElementById('inv-modal');
+document.getElementById('inv-modal-cancel').addEventListener('click', () => {
+    invModal.classList.remove('open');
+    currentModalTeamId = null;
+});
+document.getElementById('inv-modal-save').addEventListener('click', async () => {
+    const name = document.getElementById('inv-name').value.trim();
+    const qty = parseInt(document.getElementById('inv-qty').value);
+    const threshold = parseInt(document.getElementById('inv-threshold').value);
+    const msgEl = document.getElementById('inv-modal-msg');
+    if (!name || isNaN(qty) || isNaN(threshold) || qty < 0 || threshold < 0) {
+        return showMsg(msgEl, 'Please fill in all fields correctly.', 'error');
+    }
+    try {
+        await api(`/inventory/add/${currentModalTeamId}`, 'POST', { name, quantity: qty, threshold });
+        showMsg(msgEl, '✅ Item added successfully!', 'success');
+        setTimeout(() => { invModal.classList.remove('open'); document.getElementById('inv-name').value = ''; document.getElementById('inv-qty').value = ''; document.getElementById('inv-threshold').value = ''; }, 900);
+    } catch (e) { showMsg(msgEl, `❌ ${e.message}`, 'error'); }
+});
+
+// ── RESUPPLY MODAL ──
+const resupplyModal = document.getElementById('resupply-modal');
+document.getElementById('resupply-cancel').addEventListener('click', () => resupplyModal.classList.remove('open'));
+document.getElementById('resupply-confirm').addEventListener('click', async () => {
+    const qty = parseInt(document.getElementById('resupply-qty').value);
+    if (!qty || qty <= 0 || !resupplyTarget) return;
+    try {
+        await api('/update', 'POST', { teamId: resupplyTarget.teamId, itemId: resupplyTarget.itemId, amount: qty });
+        resupplyModal.classList.remove('open');
+        resupplyTarget = null;
+    } catch (e) { console.error(e); }
+});
+
+// ── DEPLOY ──
+document.getElementById('deploy-btn').addEventListener('click', async () => {
+    const name = document.getElementById('new-team-name').value.trim();
+    const loc = document.getElementById('new-team-loc').value.trim();
+    const msgEl = document.getElementById('deploy-msg');
+    if (!name) return showMsg(msgEl, 'Please enter a team name.', 'error');
+    if (!loc) return showMsg(msgEl, 'Please enter a location.', 'error');
+    try {
+        const r = await api('/deploy', 'POST', { name, location: loc });
+        showMsg(msgEl, `✅ Team deployed! Access Key: ${r.accessKey}`, 'success');
+        document.getElementById('new-team-name').value = '';
+        document.getElementById('new-team-loc').value = '';
+    } catch (e) { showMsg(msgEl, `❌ ${e.message}`, 'error'); }
+});
+
+// ── EVENT DELEGATION ──
+document.body.addEventListener('click', async e => {
+    // Delete team
+    const delTeam = e.target.closest('.btn-del-team');
+    if (delTeam) {
+        const { team, name } = delTeam.dataset;
+        if (confirm(`Delete team "${name}"? This cannot be undone.`)) {
+            try { await api(`/delete-team/${team}`, 'DELETE'); } catch (err) { alert(err.message); }
+        }
+        return;
+    }
+    // Delete inventory item
+    const delInv = e.target.closest('.del-inv-btn');
+    if (delInv) {
+        const { team, item, name } = delInv.dataset;
+        if (confirm(`Remove "${name}" from inventory?`)) {
+            try { await api(`/inventory/delete/${team}/${item}`, 'DELETE'); } catch (err) { alert(err.message); }
+        }
+        return;
+    }
+    // Add inventory
+    const addInv = e.target.closest('.btn-add-inv');
+    if (addInv) {
+        currentModalTeamId = addInv.dataset.team;
+        document.getElementById('inv-modal-team').textContent = addInv.dataset.name;
+        document.getElementById('inv-modal-msg').className = 'msg-box';
+        invModal.classList.add('open');
+        return;
+    }
+    // Message team from dashboard
+    const msgTeam = e.target.closest('.btn-msg-team');
+    if (msgTeam) {
+        const teamId = msgTeam.dataset.team;
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        document.querySelector('[data-panel="messages"]').classList.add('active');
+        document.getElementById('panel-messages').classList.add('active');
+        document.getElementById('panel-title').textContent = 'Team Messages';
+        renderMsgSidebar();
+        openConversation(teamId);
+        return;
+    }
+    // Open conversation from sidebar
+    const msgItem = e.target.closest('.msg-team-item');
+    if (msgItem) { openConversation(msgItem.dataset.teamId); return; }
+    // Resupply button in alerts
+    const resupplyBtn = e.target.closest('.btn-resupply');
+    if (resupplyBtn) {
+        resupplyTarget = { teamId: resupplyBtn.dataset.team, itemId: resupplyBtn.dataset.item };
+        document.getElementById('resupply-info-text').textContent = `Resupply "${resupplyBtn.dataset.name}" for team "${resupplyBtn.dataset.tname}"`;
+        document.getElementById('resupply-qty').value = '';
+        resupplyModal.classList.add('open');
+    }
+});
+
+// ── INIT ──
+async function init() {
+    try {
+        const data = await api('/initial-data');
+        appState.teams = data.teams || [];
+        renderDashboard();
+        renderAlerts();
+    } catch (e) { console.error('Init failed:', e); }
+    connectWS();
+}
+init();
+</script>
+</body>
+</html>
